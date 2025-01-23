@@ -2,451 +2,319 @@ import React, { useState } from 'react';
 import {
   Box,
   Typography,
-  Paper,
-  Grid,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  Card,
-  CardMedia,
-  CardContent,
-  Button,
-  Chip,
-  Collapse,
-  DialogActions,
-  FormControlLabel,
-  Checkbox,
-  Link,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Divider,
+  Paper,
+  Checkbox,
+  FormControlLabel,
+  Chip,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Radio,
+  RadioGroup,
+  FormControl,
+  Grid,
+  Divider
 } from '@mui/material';
-import ThumbUpIcon from '@mui/icons-material/ThumbUp';
-import ThumbDownIcon from '@mui/icons-material/ThumbDown';
-import InfoIcon from '@mui/icons-material/Info';
-import CloseIcon from '@mui/icons-material/Close';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ShoppingBagIcon from '@mui/icons-material/ShoppingBag';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import LuggageIcon from '@mui/icons-material/Luggage';
-import { styled } from '@mui/material/styles';
+import { differenceInDays } from 'date-fns';
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
-const ExpandMore = styled((props) => {
-  const { expand, ...other } = props;
-  return <IconButton {...other} />;
-})(({ theme, expand }) => ({
-  transform: !expand ? 'rotate(0deg)' : 'rotate(180deg)',
-  marginLeft: 'auto',
-  transition: theme.transitions.create('transform', {
-    duration: theme.transitions.duration.shortest,
-  }),
-}));
+const PackingList = ({ weatherData, startDate, endDate, selectedActivities = [] }) => {
+  const [itemStatus, setItemStatus] = useState({});
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
 
-function PackingList({ items = [] }) {
-  const [selectedOutfit, setSelectedOutfit] = useState(null);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [expanded, setExpanded] = useState({});
-  const [selectedItems, setSelectedItems] = useState({});
-  const [likedOutfits, setLikedOutfits] = useState({});
+  if (!weatherData || !startDate || !endDate) {
+    return null;
+  }
 
-  const handleOutfitClick = (outfit) => {
-    setSelectedOutfit(outfit);
-    setOpenDialog(true);
+  const tripDuration = differenceInDays(endDate, startDate) + 1;
+
+  // Activity-based clothing suggestions
+  const activityClothing = {
+    hiking: [
+      'Hiking boots',
+      'Moisture-wicking shirts',
+      'Hiking pants',
+      'Hiking socks',
+      'Sun hat'
+    ],
+    swimming: [
+      'Swimsuit',
+      'Beach towel',
+      'Swim shorts',
+      'Rash guard',
+      'Water shoes'
+    ],
+    skiing: [
+      'Ski jacket',
+      'Ski pants',
+      'Thermal base layer',
+      'Ski socks',
+      'Ski gloves'
+    ],
+    business: [
+      'Business suit',
+      'Dress shirts',
+      'Dress pants',
+      'Dress shoes',
+      'Tie/Scarf'
+    ],
+    sightseeing: [
+      'Comfortable walking shoes',
+      'Casual shirts',
+      'Comfortable pants',
+      'Day bag',
+      'Sun hat'
+    ],
+    dining: [
+      'Dress shoes',
+      'Smart casual shirts',
+      'Dress pants/skirt',
+      'Evening wear',
+      'Accessories'
+    ]
   };
 
-  const handleDialogClose = () => {
-    setOpenDialog(false);
-    setSelectedOutfit(null);
+  // Get additional items based on selected activities
+  const getActivityItems = () => {
+    const items = new Set();
+    selectedActivities.forEach(activity => {
+      if (activityClothing[activity]) {
+        activityClothing[activity].forEach(item => items.add(item));
+      }
+    });
+    return Array.from(items);
   };
 
-  const handleExpandClick = (outfitId) => {
-    setExpanded((prev) => ({
+  const calculateQuantities = (essentials, recommended, optional) => {
+    const baseQuantities = {
+      't-shirt': 7,
+      'shirt': 7,
+      'underwear': 7,
+      'socks': 7,
+      'pants': 4,
+      'shorts': 4,
+      'sweater': 2,
+      'jacket': 1,
+      'coat': 1,
+      'boots': 1,
+      'shoes': 1,
+      'sandals': 1,
+      'scarf': 1,
+      'hat': 1,
+      'gloves': 1,
+      'default': 1
+    };
+
+    const maxQuantities = {
+      't-shirt': 10,
+      'shirt': 10,
+      'underwear': 10,
+      'socks': 10,
+      'pants': 6,
+      'shorts': 6,
+      'sweater': 3,
+      'default': 2
+    };
+
+    const calculateItemQuantity = (item) => {
+      const itemLower = item.toLowerCase();
+      let baseQuantity = baseQuantities.default;
+      
+      for (const [key, value] of Object.entries(baseQuantities)) {
+        if (itemLower.includes(key)) {
+          baseQuantity = value;
+          break;
+        }
+      }
+
+      let quantity = Math.ceil((baseQuantity / 7) * tripDuration);
+      
+      for (const [key, max] of Object.entries(maxQuantities)) {
+        if (itemLower.includes(key)) {
+          quantity = Math.min(quantity, max);
+          break;
+        }
+      }
+
+      return Math.max(1, quantity);
+    };
+
+    const processItems = (items) => {
+      return items.map(item => ({
+        name: item,
+        quantity: calculateItemQuantity(item),
+        status: itemStatus[item] || null
+      }));
+    };
+
+    // Combine weather-based items with activity-based items
+    const activityItems = getActivityItems();
+    const allEssentials = [...new Set([...essentials, ...activityItems])];
+
+    return {
+      essentials: processItems(allEssentials),
+      recommended: processItems(recommended),
+      optional: processItems(optional)
+    };
+  };
+
+  const handleItemClick = (item) => {
+    setSelectedItem(item);
+    setStatusDialogOpen(true);
+  };
+
+  const handleStatusChange = (status) => {
+    setItemStatus(prev => ({
       ...prev,
-      [outfitId]: !prev[outfitId],
+      [selectedItem.name]: status
     }));
+    setStatusDialogOpen(false);
   };
 
-  const handleItemCheck = (itemId) => {
-    setSelectedItems(prev => ({
-      ...prev,
-      [itemId]: !prev[itemId]
-    }));
+  const { essentials, recommended, optional } = calculateQuantities(
+    weatherData.essentials || [],
+    weatherData.recommended || [],
+    weatherData.optional || []
+  );
+
+  const renderList = (items, title, color) => {
+    // Only show items that have a status
+    const filteredItems = items.filter(item => itemStatus[item.name]);
+    
+    if (filteredItems.length === 0) return null;
+
+    return (
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle1" color={color} sx={{ fontWeight: 'bold', mb: 1 }}>
+          {title}
+        </Typography>
+        <List dense>
+          {filteredItems.map((item, index) => (
+            <ListItem
+              key={index}
+              sx={{
+                cursor: 'pointer',
+                '&:hover': {
+                  backgroundColor: 'action.hover'
+                }
+              }}
+              onClick={() => handleItemClick(item)}
+            >
+              <ListItemText
+                primary={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography
+                      sx={{
+                        fontWeight: title === 'Essential Items' ? 500 : 400
+                      }}
+                    >
+                      {item.name} ({item.quantity}x)
+                    </Typography>
+                    {itemStatus[item.name] === 'have' && (
+                      <Chip
+                        size="small"
+                        icon={<CheckCircleIcon />}
+                        label="Have"
+                        color="success"
+                        variant="outlined"
+                      />
+                    )}
+                    {itemStatus[item.name] === 'toBuy' && (
+                      <Chip
+                        size="small"
+                        icon={<AddShoppingCartIcon />}
+                        label="To Buy"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    )}
+                  </Box>
+                }
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Box>
+    );
   };
-
-  const handleRating = (outfitId, rating) => {
-    // Handle outfit rating and replacement logic
-    console.log(`Outfit ${outfitId} rated: ${rating}`);
-    if (rating === 'like') {
-      setLikedOutfits((prev) => ({ ...prev, [outfitId]: true }));
-    } else {
-      setLikedOutfits((prev) => ({ ...prev, [outfitId]: false }));
-    }
-  };
-
-  // Sample data for testing
-  const sampleOutfits = [
-    {
-      id: 1,
-      day: 'Day 1',
-      occasion: 'Business Meeting',
-      imageUrl: 'https://via.placeholder.com/400x600?text=Business+Meeting',
-      description: 'Professional attire suitable for your morning meeting',
-      items: [
-        { id: 'item1', name: 'Navy Blazer', brand: 'Theory' },
-        { id: 'item2', name: 'White Shirt', brand: 'Brooks Brothers' },
-        { id: 'item3', name: 'Tailored Pants', brand: 'Hugo Boss' },
-      ]
-    },
-    {
-      id: 2,
-      day: 'Day 1',
-      occasion: 'Evening Dinner',
-      imageUrl: 'https://via.placeholder.com/400x600?text=Evening+Dinner',
-      description: 'Elegant outfit for your dinner reservation',
-      items: [
-        { id: 'item4', name: 'Black Dress', brand: 'Reformation' },
-        { id: 'item5', name: 'Strappy Heels', brand: 'Jimmy Choo' },
-        { id: 'item6', name: 'Clutch', brand: 'YSL' },
-      ]
-    },
-  ];
-
-  const likedOutfitsList = Object.keys(likedOutfits).filter((outfitId) => likedOutfits[outfitId]).map((outfitId) => {
-    const outfit = (items.outfits || sampleOutfits).find((outfit) => outfit.id === parseInt(outfitId));
-    return outfit;
-  });
-
-  const basicPackingItems = [
-    {
-      category: 'Toiletries',
-      items: [
-        'Toothbrush',
-        'Toothpaste',
-        'Deodorant',
-        'Shampoo',
-        'Conditioner',
-        'Soap',
-      ],
-    },
-    {
-      category: 'Electronics',
-      items: [
-        'Phone',
-        'Laptop',
-        'Charger',
-        'Headphones',
-        'Power bank',
-      ],
-    },
-    {
-      category: 'Clothing',
-      items: [
-        'Socks',
-        'Underwear',
-        'T-shirts',
-        'Pants',
-        'Dress',
-      ],
-    },
-  ];
 
   return (
-    <Paper elevation={0} sx={{ p: 4, mb: 4, backgroundColor: 'background.paper' }}>
-      <Typography variant="h4" gutterBottom>
-        Your Complete Packing List
+    <Paper elevation={2} sx={{ p: 2, mt: 2 }}>
+      <Typography variant="h6" gutterBottom>
+        Packing List
+      </Typography>
+      <Typography variant="body2" color="text.secondary" gutterBottom>
+        {tripDuration} day trip
+      </Typography>
+      
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle2" gutterBottom>
+          Selected Activities:
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          {selectedActivities.map((activity, index) => (
+            <Chip key={index} label={activity} size="small" />
+          ))}
+        </Box>
+      </Box>
+
+      <Divider sx={{ my: 2 }} />
+      
+      <Typography variant="body2" color="text.secondary" gutterBottom>
+        Click on items to mark as "Have" or "To Buy"
       </Typography>
 
-      {/* Basic Packing List */}
-      {basicPackingItems && basicPackingItems.length > 0 && (
-        <Box sx={{ mb: 6 }}>
-          <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-            <LuggageIcon sx={{ mr: 1 }} />
-            Essential Items
-          </Typography>
-          {basicPackingItems.map((category, index) => (
-            <Accordion key={index} defaultExpanded={index === 0}>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="h6">{category.category}</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <List dense>
-                  {category.items.map((item, itemIndex) => (
-                    <ListItem key={itemIndex}>
-                      <ListItemIcon>
-                        <CheckCircleOutlineIcon color="primary" />
-                      </ListItemIcon>
-                      <ListItemText primary={item} />
-                    </ListItem>
-                  ))}
-                </List>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Box>
-      )}
+      {renderList(essentials, 'Essential Items', 'primary.main')}
+      {renderList(recommended, 'Recommended Items', 'secondary.main')}
+      {renderList(optional, 'Optional Items', 'text.secondary')}
 
-      {/* Selected Outfits */}
-      {(items.outfits || sampleOutfits) && (items.outfits || sampleOutfits).length > 0 && (
-        <Box sx={{ mb: 6 }}>
-          <Typography variant="h5" gutterBottom>
-            Selected Outfits
-          </Typography>
-          <Grid container spacing={3}>
-            {(items.outfits || sampleOutfits).map((outfit) => (
-              <Grid item xs={12} key={outfit.id}>
-                <Card>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={4}>
-                      <CardMedia
-                        component="img"
-                        height="300"
-                        image={outfit.imageUrl}
-                        alt={outfit.occasion}
-                        sx={{ 
-                          borderRadius: 1,
-                          objectFit: 'cover',
-                        }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={8}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <Typography variant="h6" component="div">
-                            {outfit.occasion}
-                          </Typography>
-                          <Chip 
-                            label={outfit.day}
-                            color="primary"
-                            size="small"
-                            sx={{ ml: 2 }}
-                          />
-                        </Box>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          {outfit.description}
-                        </Typography>
-                        
-                        <Typography variant="subtitle1" sx={{ mt: 3, mb: 2 }}>
-                          Items in this outfit:
-                        </Typography>
-                        <Grid container spacing={2}>
-                          {outfit.items.map((item) => (
-                            <Grid item xs={12} sm={6} md={4} key={item.id}>
-                              <Card variant="outlined">
-                                <CardMedia
-                                  component="img"
-                                  height="150"
-                                  image={item.imageUrl}
-                                  alt={item.name}
-                                  sx={{ objectFit: 'cover' }}
-                                />
-                                <CardContent>
-                                  <Typography variant="subtitle2">
-                                    {item.name}
-                                  </Typography>
-                                  <Typography variant="body2" color="text.secondary">
-                                    {item.brand}
-                                  </Typography>
-                                  <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
-                                    {item.price}
-                                  </Typography>
-                                  <Button
-                                    component={Link}
-                                    href={item.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    startIcon={<ShoppingBagIcon />}
-                                    variant="outlined"
-                                    size="small"
-                                    sx={{ mt: 1 }}
-                                  >
-                                    Shop
-                                  </Button>
-                                </CardContent>
-                              </Card>
-                            </Grid>
-                          ))}
-                        </Grid>
-                      </CardContent>
-                    </Grid>
-                  </Grid>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-      )}
-
-      {/* Liked Outfits */}
-      {likedOutfitsList.length > 0 && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h5" gutterBottom>
-            Liked Outfits
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-            Here are the outfits you liked and their items
-          </Typography>
-
-          {likedOutfitsList.map((outfit) => (
-            <Card key={outfit.id} sx={{ mb: 4 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
-                  <CardMedia
-                    component="img"
-                    height="300"
-                    image={outfit.imageUrl}
-                    alt={outfit.occasion}
-                    sx={{ 
-                      borderRadius: 1,
-                      objectFit: 'cover',
-                    }}
-                  />
-                </Grid>
-                <Grid item xs={12} md={8}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <Typography variant="h6" component="div">
-                        {outfit.occasion}
-                      </Typography>
-                      <Chip 
-                        label={outfit.day}
-                        color="primary"
-                        size="small"
-                        sx={{ ml: 2 }}
-                      />
-                    </Box>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      {outfit.description}
-                    </Typography>
-                    
-                    <Typography variant="subtitle1" sx={{ mt: 3, mb: 2 }}>
-                      Items in this outfit:
-                    </Typography>
-                    <Grid container spacing={2}>
-                      {outfit.items.map((item) => (
-                        <Grid item xs={12} sm={6} md={4} key={item.id}>
-                          <Card variant="outlined">
-                            <CardMedia
-                              component="img"
-                              height="150"
-                              image={item.imageUrl}
-                              alt={item.name}
-                              sx={{ objectFit: 'cover' }}
-                            />
-                            <CardContent>
-                              <Typography variant="subtitle2">
-                                {item.name}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {item.brand}
-                              </Typography>
-                              <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
-                                {item.price}
-                              </Typography>
-                              <Button
-                                component={Link}
-                                href={item.link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                startIcon={<ShoppingBagIcon />}
-                                variant="outlined"
-                                size="small"
-                                sx={{ mt: 1 }}
-                              >
-                                Shop
-                              </Button>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                      ))}
-                    </Grid>
-                  </CardContent>
-                </Grid>
-              </Grid>
-            </Card>
-          ))}
-        </Box>
-      )}
-
-      <Dialog 
-        open={openDialog} 
-        onClose={handleDialogClose}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle sx={{ m: 0, p: 2 }}>
-          Outfit Details - {selectedOutfit?.occasion}
-          <IconButton
-            onClick={handleDialogClose}
-            sx={{
-              position: 'absolute',
-              right: 8,
-              top: 8,
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <img
-                src={selectedOutfit?.imageUrl}
-                alt="Outfit"
-                style={{ 
-                  width: '100%',
-                  borderRadius: 8,
-                  objectFit: 'cover',
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6" gutterBottom>
-                Do you have these items?
-              </Typography>
-              {selectedOutfit?.items.map((item) => (
-                <FormControlLabel
-                  key={item.id}
-                  control={
-                    <Checkbox
-                      checked={!!selectedItems[item.id]}
-                      onChange={() => handleItemCheck(item.id)}
-                      sx={{
-                        '&.Mui-checked': {
-                          color: '#4CAF50',
-                        },
-                      }}
-                    />
-                  }
-                  label={
-                    <Box>
-                      <Typography variant="subtitle1">
-                        {item.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {item.brand}
-                      </Typography>
-                    </Box>
-                  }
-                  sx={{ display: 'block', mb: 2 }}
-                />
-              ))}
-            </Grid>
-          </Grid>
+      <Dialog open={statusDialogOpen} onClose={() => setStatusDialogOpen(false)}>
+        <DialogTitle>Item Status</DialogTitle>
+        <DialogContent>
+          <FormControl>
+            <RadioGroup
+              value={selectedItem ? itemStatus[selectedItem.name] || '' : ''}
+              onChange={(e) => handleStatusChange(e.target.value)}
+            >
+              <FormControlLabel value="have" control={<Radio />} label="I already have this" />
+              <FormControlLabel value="toBuy" control={<Radio />} label="Need to buy" />
+              <FormControlLabel value="" control={<Radio />} label="Don't include in list" />
+            </RadioGroup>
+          </FormControl>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleDialogClose} color="primary">
-            Save
-          </Button>
+          <Button onClick={() => setStatusDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Shopping List Summary */}
+      {Object.entries(itemStatus).some(([_, status]) => status === 'toBuy') && (
+        <Box sx={{ mt: 3 }}>
+          <Typography variant="subtitle1" color="primary" gutterBottom>
+            Shopping List
+          </Typography>
+          <List dense>
+            {[...essentials, ...recommended, ...optional]
+              .filter(item => itemStatus[item.name] === 'toBuy')
+              .map((item, index) => (
+                <ListItem key={index}>
+                  <ListItemText 
+                    primary={`${item.name} (${item.quantity}x)`}
+                  />
+                </ListItem>
+              ))}
+          </List>
+        </Box>
+      )}
     </Paper>
   );
-}
+};
 
 export default PackingList;

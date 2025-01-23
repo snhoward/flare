@@ -19,6 +19,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import debounce from 'lodash/debounce';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import WeatherInfo from './WeatherInfo';
 
 // Available activities
 const ACTIVITIES = [
@@ -43,31 +44,67 @@ function TripForm({ onSubmit }) {
   const [endDate, setEndDate] = useState(null);
   const [activities, setActivities] = useState([]);
   const [map, setMap] = useState(null);
-  const [mapboxToken, setMapboxToken] = useState(process.env.REACT_APP_MAPBOX_TOKEN);
+  const [selectedLocation, setSelectedLocation] = useState(null);
 
   useEffect(() => {
-    // Debug logging
-    console.log('Mapbox Token:', process.env.REACT_APP_MAPBOX_TOKEN);
-    if (!process.env.REACT_APP_MAPBOX_TOKEN) {
+    console.log('Map initialization effect running');
+    
+    const token = process.env.REACT_APP_MAPBOX_TOKEN;
+    console.log('Mapbox Token:', token);
+
+    if (!token) {
       console.error('Mapbox token is missing!');
       return;
     }
 
     if (!map) {
-      mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_TOKEN;
+      const mapContainer = document.getElementById('map');
+      if (!mapContainer) {
+        console.error('Map container not found!');
+        return;
+      }
+
+      // Set the token directly on mapboxgl
+      mapboxgl.accessToken = token;
+      
       try {
+        console.log('Initializing new map...');
         const newMap = new mapboxgl.Map({
           container: 'map',
-          style: 'mapbox://styles/mapbox/light-v11',
-          center: [-74.006, 40.7128], // Default to NYC
-          zoom: 9
+          style: 'mapbox://styles/mapbox/basic-v9', // Try a simpler style
+          center: [-74.006, 40.7128],
+          zoom: 9,
+          transformRequest: (url, resourceType) => {
+            if (resourceType === 'Style' && !url.includes('access_token')) {
+              // Add the token to the URL if it's missing
+              return {
+                url: `${url}${url.includes('?') ? '&' : '?'}access_token=${token}`
+              };
+            }
+          }
         });
+
+        newMap.on('load', () => {
+          console.log('Map loaded successfully');
+        });
+
+        newMap.on('error', (e) => {
+          console.error('Map error:', e);
+        });
+
         setMap(newMap);
       } catch (error) {
         console.error('Error initializing map:', error);
       }
     }
-  }, [map]);
+
+    // Cleanup function
+    return () => {
+      if (map) {
+        map.remove();
+      }
+    };
+  }, []); // Empty dependency array
 
   const fetchSuggestions = useCallback(
     debounce(async (query) => {
@@ -101,15 +138,48 @@ function TripForm({ onSubmit }) {
         setSuggestions([]);
       }
     }, 300),
-    [mapboxToken]
+    []
   );
+
+  const updateMapCoordinates = async (query) => {
+    const token = process.env.REACT_APP_MAPBOX_TOKEN;
+    if (!query || !map || !token) {
+      console.log('Skipping map update:', { query, hasMap: !!map, hasToken: !!token });
+      return;
+    }
+    
+    try {
+      console.log('Fetching coordinates for:', query);
+      const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(
+        query
+      )}.json?access_token=${token}&types=place`;
+      
+      const response = await fetch(endpoint);
+      const data = await response.json();
+      console.log('Geocoding response:', data);
+      
+      if (data.features && data.features.length > 0) {
+        const coordinates = data.features[0].center;
+        console.log('Moving map to coordinates:', coordinates);
+        map.flyTo({
+          center: coordinates,
+          zoom: 10,
+          essential: true
+        });
+      }
+    } catch (error) {
+      console.error('Error updating map coordinates:', error);
+    }
+  };
 
   const handleDestinationChange = (event, newValue) => {
     console.log('handleDestinationChange:', { newValue }); // Debug log
     if (typeof newValue === 'string') {
       setDestination(newValue);
+      setSelectedLocation(null);
     } else if (newValue) {
       setDestination(newValue.label);
+      setSelectedLocation(newValue);
       if (map && newValue.coordinates) {
         map.flyTo({
           center: newValue.coordinates,
@@ -124,6 +194,7 @@ function TripForm({ onSubmit }) {
     setDestination(newInputValue);
     if (newInputValue && newInputValue.length >= 2) {
       fetchSuggestions(newInputValue);
+      updateMapCoordinates(newInputValue);
     } else {
       setSuggestions([]);
     }
@@ -233,9 +304,28 @@ function TripForm({ onSubmit }) {
               height: '300px',
               width: '100%',
               borderRadius: 1,
-              overflow: 'hidden'
+              overflow: 'hidden',
+              border: '1px solid #ccc',
+              marginTop: 2,
+              marginBottom: 2,
+              position: 'relative',
+              '& .mapboxgl-canvas': {
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: 0,
+                right: 0
+              }
             }}
           />
+
+          {destination && startDate && endDate && (
+            <WeatherInfo
+              location={selectedLocation || suggestions.find(s => s.label === destination)}
+              startDate={startDate}
+              endDate={endDate}
+            />
+          )}
 
           <Button
             type="submit"
